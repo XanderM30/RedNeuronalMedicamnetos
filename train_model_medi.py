@@ -16,8 +16,8 @@ import os
 import json
 import shutil
 from datetime import datetime
-from collections import OrderedDict
 
+import tensorflow as tf
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
@@ -30,10 +30,13 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
+
 # ---------------------------
 # CONFIGURACIÓN (ajusta aquí)
 # ---------------------------
-SERVICE_ACCOUNT_PATH = "firebase_config/serviceAccountKey.json"  # <- tu key
+SERVICE_ACCOUNT_PATH = "firebase_config/serviceAccountKey.json" 
+ #<- tu key
+
 FIREBASE_COLLECTION = "medicamentos"
 OUTPUT_DIR = "model_output"
 BACKUP_DIR = os.path.join(OUTPUT_DIR, "backup")
@@ -48,6 +51,7 @@ MAX_VOCAB_SIZE = 5000
 SEQUENCE_LENGTH = 32
 EMBEDDING_DIM = 64
 RANDOM_SEED = 42
+
 
 VERSION_FILE = os.path.join(OUTPUT_DIR, "version.txt")
 MODEL_H5 = os.path.join(OUTPUT_DIR, "med_classifier.h5")
@@ -343,6 +347,8 @@ def convert_to_tflite(keras_model_path, vectorizer_vocab_path, tflite_path, quan
 
     # convertir
     converter = tf.lite.TFLiteConverter.from_keras_model(full_model)
+    converter._experimental_lower_tensor_list_ops = False
+
     converter.target_spec.supported_ops = [
     tf.lite.OpsSet.TFLITE_BUILTINS,     # Operaciones estándar
     tf.lite.OpsSet.SELECT_TF_OPS        # Permite TextVectorization y similares
@@ -415,22 +421,26 @@ def predict_by_name_keras(name, model, vect, label_map, id_to_doc, top_k=1):
 # ---------------------------
 # Inferencia (TFLite)
 # ---------------------------
+# ---------------------------
+# Inferencia (TFLite)
+# ---------------------------
 def predict_by_name_tflite(name, tflite_path=TFLITE_PATH, top_k=1):
     if not os.path.exists(tflite_path):
         raise FileNotFoundError("No se encontró TFLite en " + tflite_path)
     if not os.path.exists(VOCAB_PATH) or not os.path.exists(LABEL_MAP_PATH) or not os.path.exists(DOCS_PATH):
         raise FileNotFoundError("Faltan artefactos necesarios (vocab/label_map/docs)")
+
     with open(VOCAB_PATH, "r", encoding="utf-8") as f:
         vocab = json.load(f)
-    # crear layer vect con vocab local (para convertir texto -> ints)
-    vect = layers.TextVectorization(max_tokens=len(vocab), output_mode='int', output_sequence_length=SEQUENCE_LENGTH)
-    vect.set_vocabulary(vocab)
-    x_int = vect(np.array([name])).numpy()  # shape (1, seq_len)
-    # Cargar label_map y docs
     with open(LABEL_MAP_PATH, "r", encoding="utf-8") as f:
         label_map = json.load(f)
     with open(DOCS_PATH, "r", encoding="utf-8") as f:
         id_to_doc = json.load(f)
+
+    # Crear TextVectorization local para convertir texto a ints
+    vect = layers.TextVectorization(max_tokens=len(vocab), output_mode='int', output_sequence_length=SEQUENCE_LENGTH)
+    vect.set_vocabulary(vocab)
+    x_int = vect(np.array([name])).numpy().astype(np.int32)
 
     # Inicializar intérprete
     interpreter = tf.lite.Interpreter(model_path=tflite_path)
@@ -438,20 +448,38 @@ def predict_by_name_tflite(name, tflite_path=TFLITE_PATH, top_k=1):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    # Buscar la entrada que espera STRING o INT; nuestro TFLite completo debería aceptar STRING
-    # Si el converted model acepta string, hay que pasarlo como bytes
-    # Intentamos primero pasar string bytes; si falla, pasar ints
-    try:
-        # input espera string
-        if input_details[0]['dtype'] == np.dtype('object') or input_details[0]['dtype'] == np.bytes_:
+    input_index = input_details[0]['index']
+    input_dtype = input_details[0]['dtype']
 
-            interpreter.set_tensor(input_details[0]['index'], np.array([name], dtype=object))
+    # Determinar el tipo de entrada que espera el modelo
+    try:
+        if input_dtype == np.dtype(np.string_) or input_dtype == np.object_:
+            # El modelo espera strings
+            input_data = np.array([name.encode('utf-8')])
+        elif input_dtype == np.int32:
+            # El modelo espera secuencias de enteros
+            input_data = x_int
         else:
-            # suponer que el modelo espera ints (si se convirtió un pipeline diferente)
-            interpreter.set_tensor(input_details[0]['index'], x_int.astype(np.int32))
-    except Exception:
-        # fallback a ints
-        interpreter.set_tensor(input_details[0]['index'], np.array([[query.encode('utf-8')]], dtype=np.bytes_))
+            raise ValueError(f"Tipo de entrada no soportado: {input_dtype}")
+        
+        interpreter.set_tensor(input_index, input_data)
+        interpreter.invoke()
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+    except Exception as e:
+        raise RuntimeError(f"Error al ejecutar inferencia TFLite: {e}")
+
+    probs = np.array(output_data[0])
+    idxs = np.argsort(probs)[::-1][:top_k]
+    result = []
+    classes = label_map['classes']
+
+    for idx in idxs:
+        docid = classes[int(idx)]
+        score = float(probs[int(idx)])
+        doc = id_to_doc.get(docid, {"_id": docid})
+        result.append({"doc": doc, "score": score})
+
+    return result
 
 
 
@@ -504,6 +532,8 @@ def detect_changes_in_firebase(local_docs_path, current_docs):
             modificados.append(mid)
 
     hay_cambios = bool(nuevos or eliminados or modificados)
+
+
 
     print("───────────────────────────────────────────────")
     if hay_cambios:
@@ -559,3 +589,4 @@ if __name__ == "__main__":
     print("═══════════════════════════════════════════════════════════")
     print(" ✅ Proceso finalizado. Modelo listo para Flutter.")
     print("═══════════════════════════════════════════════════════════")
+
