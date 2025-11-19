@@ -3,6 +3,8 @@ FirebaseKeys/
 firebase_config/
 serviceAccountKey.json
 *.json
+!tokens.json
+
 
 # === Python ===
 __pycache__/
