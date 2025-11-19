@@ -1,0 +1,37 @@
+# === Carpetas / Archivos sensibles ===
+FirebaseKeys/
+firebase_config/
+serviceAccountKey.json
+*.json
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# === Modelos / Pesos ===
+*.tflite
+*.h5
+*.pb
+
+# === Flutter / Dart ===
+build/
+.dart_tool/
+.packages
+pubspec.lock
+android/.gradle/
+android/build/
+ios/Pods/
+ios/Runner.xcworkspace/
+*.iml
+
+# === Logs ===
+*.log
+
+# === Sistema ===
+.DS_Store
+Thumbs.db

@@ -18,7 +18,7 @@ stemmer = SpanishStemmer()
 # -----------------------------
 # 1️⃣ Inicializar Firebase
 # -----------------------------
-cred = credentials.Certificate("firebase_config/serviceAccountKey.json")
+cred = credentials.Certificate(r"C:\Users\alexa\FirebaseKeys\serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -305,7 +305,7 @@ def predict_medicamento(user_input, top_n=3, threshold=5):
 # -----------------------------
 if __name__ == "__main__":
     # Ejemplo: el usuario escribe el nombre o parte del nombre
-    ejemplo_usuario = "Paracetamol"   # Cambia esto para probar otros inputs
+    ejemplo_usuario = "ibuprofeno"   # Cambia esto para probar otros inputs
     print(f"\n🔎 Buscando para: '{ejemplo_usuario}'")
     resultado = predict_medicamento(ejemplo_usuario, top_n=5, threshold=1)  # threshold bajo para mostrar posibilidades
     if not resultado:
