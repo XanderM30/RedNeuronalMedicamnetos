@@ -262,6 +262,17 @@ if cambio_detectado and history is not None:
 else:
     print("ℹ️ No se generó reporte porque no hubo entrenamiento.")
 
+    # -----------------------------
+# 11️⃣ Guardar tokens para Flutter
+# -----------------------------
+tokens_file = "tokens.json"
+with open(tokens_file, "w", encoding="utf-8") as f:
+    json.dump(tokens, f, ensure_ascii=False, indent=4)
+
+print(f"✅ Tokens guardados en: {tokens_file}")
+print(f"🔹 Total de tokens: {len(tokens)}")
+
+
 # -----------------------------
 # 🔟 Función de predicción (devuelve datos completos del medicamento)
 # -----------------------------
